@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Album</title>
+</head>
+<body>
+  <h1>Photo Album</h1>
+
+  <p><label>API key <input id="api-key" type="password" autocomplete="off"></label></p>
+
+  <h2>Search photos</h2>
+  <form id="search-form">
+    <label>Search <input id="query" type="search" required></label>
+    <button>Search</button>
+  </form>
+  <p id="search-status" role="status"></p>
+  <div id="results"></div>
+
+  <h2>Upload a photo</h2>
+  <form id="upload-form">
+    <p><label>JPEG or PNG <input id="photo" type="file" accept="image/jpeg,image/jpg,image/png" required></label></p>
+    <p><label>Custom labels <input id="labels" type="text" placeholder="Sam, Sally"></label></p>
+    <button>Upload</button>
+  </form>
+  <p id="upload-status" role="status"></p>
+
+  <script src="lib/axios/dist/axios.standalone.js"></script>
+  <script src="lib/CryptoJS/rollups/hmac-sha256.js"></script>
+  <script src="lib/CryptoJS/rollups/sha256.js"></script>
+  <script src="lib/CryptoJS/components/hmac.js"></script>
+  <script src="lib/CryptoJS/components/enc-base64.js"></script>
+  <script src="lib/url-template/url-template.js"></script>
+  <script src="lib/apiGatewayCore/sigV4Client.js"></script>
+  <script src="lib/apiGatewayCore/apiGatewayClient.js"></script>
+  <script src="lib/apiGatewayCore/simpleHttpClient.js"></script>
+  <script src="lib/apiGatewayCore/utils.js"></script>
+  <script src="apigClient.js"></script>
+  <script>
+    // Paste the invoke URL for the same stage used to generate apigClient.js.
+    const apiBase = "https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com/v1";
+
+    const apiKeyInput = document.getElementById("api-key");
+    const results = document.getElementById("results");
+    const searchStatus = document.getElementById("search-status");
+    const uploadStatus = document.getElementById("upload-status");
+
+    document.getElementById("search-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const apiKey = apiKeyInput.value.trim();
+      const query = document.getElementById("query").value.trim();
+      results.replaceChildren();
+
+      if (!apiKey || !query) {
+        searchStatus.textContent = "Enter the API key and a search query.";
+        return;
+      }
+
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      searchStatus.textContent = "Searching…";
+
+      try {
+        const client = apigClientFactory.newClient({ apiKey });
+        const response = await client.searchGet({ q: query });
+        const photos = response.data.results;
+
+        for (const photo of photos) {
+          const figure = document.createElement("figure");
+          const image = document.createElement("img");
+          const caption = document.createElement("figcaption");
+          image.src = photo.url;
+          image.alt = "Search result photo";
+          image.style.maxWidth = "min(300px, 100%)";
+          caption.textContent = photo.labels.join(", ");
+          figure.append(image, caption);
+          results.append(figure);
+        }
+
+        searchStatus.textContent = photos.length ? `Found ${photos.length} photo(s).` : "No photos found.";
+      } catch (error) {
+        searchStatus.textContent = error.response
+          ? `Search failed (HTTP ${error.response.status}).`
+          : `Search failed. ${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("upload-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const apiKey = apiKeyInput.value.trim();
+      const file = document.getElementById("photo").files[0];
+      const labels = document.getElementById("labels").value
+        .split(",").map((label) => label.trim()).filter(Boolean).join(", ");
+
+      if (!apiKey || !file) {
+        uploadStatus.textContent = "Enter the API key and choose a photo.";
+        return;
+      }
+      if (!["image/jpeg", "image/jpg", "image/png"].includes(file.type)) {
+        uploadStatus.textContent = "Choose a JPEG or PNG file.";
+        return;
+      }
+      if (apiBase.includes("YOUR_API_ID")) {
+        uploadStatus.textContent = "Set apiBase in index.html to your API Gateway stage invoke URL.";
+        return;
+      }
+
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      uploadStatus.textContent = "Uploading…";
+
+      const extension = file.type === "image/png" ? "png" : "jpg";
+      const suffix = Math.random().toString(36).slice(2, 8);
+      const key = `photo-${Date.now()}-${suffix}.${extension}`;
+      const headers = { "x-api-key": apiKey, "content-type": file.type };
+      if (labels) {
+        headers["x-amz-meta-customlabels"] = labels;
+      }
+
+      try {
+        const url = new URL(apiBase.replace(/\/$/, "") + "/photos");
+        url.searchParams.set("key", key);
+        const response = await fetch(url, { method: "PUT", headers, body: file });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        uploadStatus.textContent = `Uploaded ${key}. Search by label after indexing finishes.`;
+      } catch (error) {
+        uploadStatus.textContent = `Upload failed. ${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
