@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  build:
+    commands:
+      - |
+        set -euo pipefail
+        test -s website/index.html
+        test -s website/apigClient.js
+        test -s website/lib/axios/dist/axios.standalone.js
+        test -s website/lib/apiGatewayCore/apiGatewayClient.js
+        if grep -q 'YOUR_API_ID' website/index.html; then
+          echo "Set apiBase in website/index.html to the deployed API Gateway stage URL." >&2
+          exit 1
+        fi
+
+artifacts:
+  base-directory: website
+  files:
+    - index.html
+    - apigClient.js
+    - lib/**/*
