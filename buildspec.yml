@@ -8,14 +8,23 @@ phases:
     commands:
       - |
         set -euo pipefail
-        test -s website/index.html
-        test -s website/apigClient.js
-        test -s website/lib/axios/dist/axios.standalone.js
-        test -s website/lib/apiGatewayCore/apiGatewayClient.js
-        if grep -q 'YOUR_API_ID' website/index.html; then
-          echo "Set apiBase in website/index.html to the deployed API Gateway stage URL." >&2
+
+        for file in website/index.html \
+                    website/apigClient.js \
+                    website/lib/axios/dist/axios.standalone.js \
+                    website/lib/apiGatewayCore/apiGatewayClient.js; do
+          if [[ ! -s "$file" ]]; then
+            printf 'Missing or empty frontend file: %s\n' "$file" >&2
+            exit 1
+          fi
+        done
+
+        if grep -Eq '^[[:space:]]*const[[:space:]]+apiBase[[:space:]]*=.*YOUR_API_ID' website/index.html; then
+          printf 'Set const apiBase in website/index.html to your deployed API Gateway invoke URL.\n' >&2
           exit 1
         fi
+
+        printf 'Frontend files checked successfully.\n'
 
 artifacts:
   base-directory: website
